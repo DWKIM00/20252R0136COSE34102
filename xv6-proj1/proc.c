@@ -568,9 +568,9 @@ getnice(int pid)
     /* ******************** */
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->pid == pid){
-        int pval = p->priority;
+        int n_val = p->priority;
         release(&ptable.lock);
-        return pval;
+        return n_val;
       }
     }
 
@@ -581,6 +581,14 @@ getnice(int pid)
 void
 ps(void)
 {
+    static char *states[] = {
+      [UNUSED]    "UNUSED",
+      [EMBRYO]    "EMBRYO",
+      [SLEEPING]  "SLEEPING",
+      [RUNNABLE]  "RUNNABLE",
+      [RUNNING]   "RUNNING",
+      [ZOMBIE]    "ZOMEBIE"
+    };
     struct proc *p;
     acquire(&ptable.lock);
     cprintf("name\tpid\tppid\tmem\tprio\tstate\n");
@@ -588,6 +596,14 @@ ps(void)
     /* ******************** */
     /* * WRITE YOUR CODE    */
     /* ******************** */
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state == UNUSED) continue;
+      int ppid;
+
+      if(p->parent) ppid = p->parent->pid;
+      else ppid = -1;
+      cprintf("%s\t%d\t%d\t%d\t%d\t%s\n", p->name, p->pid, ppid, p->sz, p->priority, states[p->state]);
+    }
 
     release(&ptable.lock);
     return;
