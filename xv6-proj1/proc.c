@@ -545,6 +545,13 @@ setnice(int pid, int nice)
     /* ******************** */
     /* * WRITE YOUR CODE    */
     /* ******************** */
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == pid){
+        p->priority = nice;
+        release(&ptable.lock);
+        return 0;
+      }
+    }
 
     release(&ptable.lock);
     return -1;
