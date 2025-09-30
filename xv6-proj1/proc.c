@@ -566,6 +566,13 @@ getnice(int pid)
     /* ******************** */
     /* * WRITE YOUR CODE    */
     /* ******************** */
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == pid){
+        int pval = p->priority;
+        release(&ptable.lock);
+        return pval;
+      }
+    }
 
     release(&ptable.lock);
     return -1;
