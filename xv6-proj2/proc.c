@@ -14,6 +14,44 @@ struct {
 
 static struct proc *initproc;
 
+static struct proc *ready_hp;
+
+static struct proc *
+get_r(void)
+{
+  if(ready_hp == 0) return 0;
+
+  struct proc *p = ready_hp;
+  ready_hp = p->ready;
+  p->ready = 0;
+  return p;
+}
+static void
+insert_r(struct proc *p)
+{
+  p->ready = 0;
+  if(ready_hp == 0){
+    ready_hp = p;
+    return;
+  }
+  if(p->priority < ready_hp->priority || (p->priority == ready_hp->priority && p->pid > ready_hp->pid)){
+    p->ready = ready_hp;
+    ready_hp = p;
+    return;
+  }
+
+  struct proc *temp = ready_hp;
+  while(temp->ready != 0){
+    if(p->priority < temp->ready->priority || (p->priority == temp->ready->priority && p-> pid > temp->ready->pid)){
+      p->ready = temp->ready;
+      temp->ready = p;
+      return;
+    }
+    temp = temp->ready;
+  }
+  temp->ready = p;
+}
+
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -152,6 +190,8 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  insert_r(p);
+
   release(&ptable.lock);
 }
 
@@ -202,6 +242,12 @@ fork(void)
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
+  if(curproc->priority > 15){
+    np->priority = curproc->priority/2;
+  }else{
+    np->priority = curproc->priority + 1;
+  }
+
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -218,7 +264,11 @@ fork(void)
 
   np->state = RUNNABLE;
 
+  insert_r(np);
+
   release(&ptable.lock);
+
+  if(myproc()) yield();
 
   return pid;
 }
@@ -334,24 +384,28 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    
+    p=get_r();
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+    if(p==0){
+      release(&ptable.lock);
+      continue;
     }
+
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+  
     release(&ptable.lock);
 
   }
@@ -389,6 +443,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
+  insert_r(myproc());
   sched();
   release(&ptable.lock);
 }
@@ -462,8 +517,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+      insert_r(p);
+    }
 }
 
 // Wake up all processes sleeping on chan.
