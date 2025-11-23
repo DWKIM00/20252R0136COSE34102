@@ -335,7 +335,7 @@ copyuvm(pde_t *pgdir, uint sz)
     }
   
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0){
-      goto bad
+      goto bad;
     }
 
     inc_refcount(pa);
@@ -394,13 +394,37 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 void
 page_fault(void)
 {
+  struct proc *curproc = myproc();
   uint va = rcr2();
+  pte_t *pte;
+  uint pa;
+  char *mem;
+  uint flags;
+
   if(va < 0) {
     panic("Invalid access");
+    curproc->killed = 1;
     return;
   }
-  
-  return;
+
+  pte = walkpgdir(curproc->pgdir, (void*)va, 0);
+  pa =PTE_ADDR(*pte);
+
+  if(get_refcount(pa)>1){
+    if((mem = kalloc()) == 0){
+      curproc->killed = 1;
+      return;
+    }
+
+    memmove(mem, (char*)P2V(pa), PGSIZE);
+
+    flags = PTE_FLAGS(*pte);
+    flags |= PTE_W;
+    dec_refcount(pa);
+    *pte = V2P(mem) | flags;
+  }else *pte |= PTE_W;
+
+lcr3(V2P(curproc->pgdir));
 }
 
 //PAGEBREAK!
