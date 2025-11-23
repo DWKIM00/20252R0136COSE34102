@@ -72,24 +72,23 @@ kfree(char *v)
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
-  r = (struct run*)v;
   pa = V2P(v);
 
-  if(pmem.refcount[pa >> PGSHIFT] > 0){
-    pmem.refcount[pa >> PGSHIFT]--;
-  }
+  dec_refcount(pa);
 
-  if(pmem.refcount[pa >> PGSHIFT] == 0){
+  if(get_refcount(pa) == 0){
+    if(kmem.use_lock) 
+      acquire(&kmem.lock);
+    r = (struct run*)v;
+    
     memset(v, 1, PGSIZE);
     r->next = kmem.freelist;
     kmem.freelist = r;
     pmem.num_free_pages++;
-  }
-
+    
   if(kmem.use_lock)
     release(&kmem.lock);
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -106,10 +105,12 @@ kalloc(void)
   if(r){
     kmem.freelist = r->next;
     pmem.num_free_pages--;
-    pmem.refcount[V2P((char*)r) >> PGSHIFT] = 1;
   }
   if(kmem.use_lock)
     release(&kmem.lock);
+
+  if(r)
+    inc_refcount(V2P((char*)r));
   return (char*)r;
 }
 
@@ -124,9 +125,11 @@ get_refcount(uint pa)
 {
   uint cnt;
 
-  acquire(&kmem.lock);
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
   cnt = pmem.refcount[pa >> PGSHIFT];
-  release(&kmem.lock);
+  if(kmem.use_lock)
+    release(&kmem.lock);
 
   return cnt;
 }
@@ -134,17 +137,21 @@ get_refcount(uint pa)
 void
 inc_refcount(uint pa)
 {
-  acquire(&kmem.lock);
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
   pmem.refcount[pa >> PGSHIFT]++;
-  release(&kmem.lock);
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
 
 void  
 dec_refcount(uint pa)
 {
-  acquire(&kmem.lock);
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
   if(pmem.refcount[pa >> PGSHIFT]>0){
     pmem.refcount[pa >> PGSHIFT]--;
   }
-  release(&kmem.lock);
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
