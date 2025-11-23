@@ -116,17 +116,29 @@ freemem(void)
 uint
 get_refcount(uint pa)
 {
-  return 0;
+  unit cnt;
+
+  acquire(&kmem.lock);
+  cnt = pmem.refcount[pa >> PGSHIFT];
+  release(&kmem.lock);
+
+  return cnt;
 }
 
 void
 inc_refcount(uint pa)
 {
-  return;
+  acquire(&kmem.lock);
+  pmem.refcount[pa >> PGSHIFT]++;
+  release(&kmem.lock);
 }
 
 void  
 dec_refcount(uint pa)
 {
-  return;
+  acquire(&kmem.lock);
+  if(pmem.refcount[pa >> PGSHIFT]>0){
+    pmem.refcount[pa >> PGSHIFT]--;
+  }
+  release(&kmem.lock);
 }
